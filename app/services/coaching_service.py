@@ -12,6 +12,7 @@ from app.schemas.coaching import (
 )
 from app.services.llm_client import get_llm_client, LLMClientError
 from app.services.prompt_builder import get_prompt_builder
+from app.services.quality_evaluator import get_quality_evaluator, QualityScore
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +28,9 @@ class CoachingService:
     def __init__(self):
         self.llm_client = get_llm_client()
         self.prompt_builder = get_prompt_builder()
+        self.quality_evaluator = get_quality_evaluator()
     
-    async def create_coaching_session(self, resume_data: ResumePayload) -> CoachingResult:
+    async def create_coaching_session(self, resume_data: ResumePayload, enable_quality_optimization: bool = True) -> CoachingResult:
         """
         이력서 데이터를 기반으로 개인 맞춤형 코칭 세션 생성
         
@@ -44,30 +46,12 @@ class CoachingService:
         try:
             logger.info(f"코칭 세션 생성 시작: {resume_data.career_summary[:50]}...")
             
-            # 병렬로 면접 질문과 학습 경로 생성
-            interview_questions_task = self._generate_interview_questions(resume_data)
-            learning_path_task = self._generate_learning_path(resume_data)
-            
-            # 두 작업 동시 실행
-            import asyncio
-            interview_questions, learning_path = await asyncio.gather(
-                interview_questions_task,
-                learning_path_task,
-                return_exceptions=True
-            )
-            
-            # 예외 처리
-            if isinstance(interview_questions, Exception):
-                raise interview_questions
-            if isinstance(learning_path, Exception):
-                raise learning_path
-            
-            # 결과 조합
-            result = CoachingResult(
-                session_id=uuid4(),
-                interview_questions=interview_questions,
-                learning_path=learning_path
-            )
+            if enable_quality_optimization:
+                # 품질 최적화 모드: 여러 전략으로 생성하고 최고 품질 선택
+                result = await self._create_optimized_session(resume_data)
+            else:
+                # 일반 모드: 단일 전략으로 생성
+                result = await self._create_standard_session(resume_data)
             
             logger.info(f"코칭 세션 생성 완료: {result.session_id}")
             return result
@@ -76,11 +60,100 @@ class CoachingService:
             logger.error(f"코칭 세션 생성 실패: {str(e)}")
             raise CoachingServiceError(f"코칭 세션 생성 중 오류 발생: {str(e)}")
     
-    async def _generate_interview_questions(self, resume_data: ResumePayload) -> List[InterviewQuestion]:
+    async def _create_optimized_session(self, resume_data: ResumePayload) -> CoachingResult:
+        """품질 최적화된 코칭 세션 생성 (A/B 테스트)"""
+        import asyncio
+        
+        logger.info("품질 최적화 모드로 세션 생성 중...")
+        
+        # 다양한 전략으로 병렬 생성
+        strategies = ["balanced", "technical_deep", "system_design"]
+        personas = ["senior_engineer", "tech_lead", "platform_architect"]
+        
+        tasks = []
+        for strategy in strategies:
+            for persona in personas:
+                task = self._generate_candidate_session(resume_data, persona, strategy)
+                tasks.append(task)
+        
+        # 모든 후보 결과 생성
+        candidates = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 유효한 결과만 필터링
+        valid_candidates = []
+        for candidate in candidates:
+            if not isinstance(candidate, Exception):
+                try:
+                    # 품질 평가
+                    quality_score = self.quality_evaluator.evaluate_coaching_result(candidate, resume_data)
+                    valid_candidates.append((candidate, quality_score))
+                    logger.info(f"후보 세션 품질 점수: {quality_score.overall:.2f}")
+                except Exception as e:
+                    logger.warning(f"품질 평가 실패: {str(e)}")
+        
+        if not valid_candidates:
+            logger.warning("모든 최적화 시도 실패, 표준 모드로 대체")
+            return await self._create_standard_session(resume_data)
+        
+        # 최고 품질 선택
+        best_candidate, best_score = max(valid_candidates, key=lambda x: x[1].overall)
+        
+        logger.info(f"최적 세션 선택됨. 품질 점수: {best_score.overall:.2f}")
+        logger.info(f"개선 제안: {self.quality_evaluator.generate_improvement_suggestions(best_score)}")
+        
+        return best_candidate
+    
+    async def _create_standard_session(self, resume_data: ResumePayload) -> CoachingResult:
+        """표준 코칭 세션 생성"""
+        
+        # 병렬로 면접 질문과 학습 경로 생성
+        interview_questions_task = self._generate_interview_questions(resume_data)
+        learning_path_task = self._generate_learning_path(resume_data)
+        
+        # 두 작업 동시 실행
+        import asyncio
+        interview_questions, learning_path = await asyncio.gather(
+            interview_questions_task,
+            learning_path_task,
+            return_exceptions=True
+        )
+        
+        # 예외 처리
+        if isinstance(interview_questions, Exception):
+            raise interview_questions
+        if isinstance(learning_path, Exception):
+            raise learning_path
+        
+        # 결과 조합
+        result = CoachingResult(
+            session_id=uuid4(),
+            interview_questions=interview_questions,
+            learning_path=learning_path
+        )
+        
+        return result
+    
+    async def _generate_candidate_session(self, resume_data: ResumePayload, persona: str, strategy: str) -> CoachingResult:
+        """특정 페르소나와 전략으로 후보 세션 생성"""
+        try:
+            # 커스텀 프롬프트로 생성
+            interview_questions = await self._generate_interview_questions(resume_data, persona, strategy)
+            learning_path = await self._generate_learning_path(resume_data, persona)
+            
+            return CoachingResult(
+                session_id=uuid4(),
+                interview_questions=interview_questions,
+                learning_path=learning_path
+            )
+        except Exception as e:
+            logger.warning(f"후보 세션 생성 실패 (persona={persona}, strategy={strategy}): {str(e)}")
+            raise e
+    
+    async def _generate_interview_questions(self, resume_data: ResumePayload, persona_type: str = None, strategy: str = None) -> List[InterviewQuestion]:
         """면접 질문 생성"""
         try:
             # 프롬프트 구성
-            prompt = self.prompt_builder.build_interview_questions_prompt(resume_data)
+            prompt = self.prompt_builder.build_interview_questions_prompt(resume_data, persona_type, strategy)
             
             # LLM 호출
             response = await self.llm_client.generate_json_completion(
@@ -119,11 +192,11 @@ class CoachingService:
             logger.error(f"LLM 호출 실패: {str(e)}")
             raise CoachingServiceError(f"면접 질문 생성 실패: {str(e)}")
     
-    async def _generate_learning_path(self, resume_data: ResumePayload) -> LearningPath:
+    async def _generate_learning_path(self, resume_data: ResumePayload, persona_type: str = None) -> LearningPath:
         """학습 경로 생성"""
         try:
             # 프롬프트 구성
-            prompt = self.prompt_builder.build_learning_path_prompt(resume_data)
+            prompt = self.prompt_builder.build_learning_path_prompt(resume_data, persona_type)
             
             # LLM 호출
             response = await self.llm_client.generate_json_completion(
