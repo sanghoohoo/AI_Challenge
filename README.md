@@ -191,8 +191,11 @@ curl http://localhost:8000/health
 ## 📝 개발 참고 자료
 
 - [competition_rules.txt](./competition_rules.txt) - 챌린지 요구사항
-- [development_plan.md](./development_plan.md) - 상세 개발 계획
+- [development_plan.md](./development_plan.md) - 상세 개발 계획  
 - [gemini_responce.txt](./gemini_responce.txt) - 전략 문서
+- **AI 대화 기록**:
+  - [AI_CHALLENGE_LOG.md](./AI_CHALLENGE_LOG.md) - Claude Code 개발 전 과정
+  - [Gemini 전략 수립](https://g.co/gemini/share/e99dc60108ed) - 초기 아이디어 도출
 
 ---
 

@@ -201,6 +201,17 @@ pytest tests/ -v
 
 ---
 
+## 📚 개발 참고 자료
+
+### 🤖 AI 대화 기록
+- **Claude Code 개발 과정**: [AI_CHALLENGE_LOG.md](./AI_CHALLENGE_LOG.md) - 전체 개발 과정 완전 기록
+- **Gemini 전략 수립**: https://g.co/gemini/share/e99dc60108ed - 초기 전략 및 아이디어 도출
+
+### 📋 프로젝트 문서
+- **개발 계획서**: [development_plan.md](./development_plan.md) - 5단계 체계적 개발 로드맵
+- **경쟁 규칙**: [competition_rules.txt](./competition_rules.txt) - AI Challenge 요구사항 분석
+- **전략 문서**: [gemini_responce.txt](./gemini_responce.txt) - Gemini 기반 전략 수립 결과
+
 ## 📞 연락처
 
 - **GitHub**: https://github.com/sanghoohoo/AI_Challenge
